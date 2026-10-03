@@ -1,6 +1,6 @@
 # Secure FastAPI Homelab
 
-**Target:** v1.0 complete by **31 October 2026**
+**Target:** v1.0 complete by **30 November 2026**
 
 ## Goal
 
