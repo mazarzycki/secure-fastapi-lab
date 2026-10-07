@@ -1,0 +1,9 @@
+.env
+secrets/*
+!secrets/.gitkeep
+nginx/certs/*
+!nginx/certs/.gitkeep
+pki/*
+!pki/.gitkeep
+captures/*.pcap
+captures/*.pcapng
