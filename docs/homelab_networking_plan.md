@@ -1,15 +1,15 @@
 # Secure FastAPI Homelab — Backend Networking Edition
 
-**Revision:** 3.1 — 7 October 2026
-**v1.0 target:** tagged by **30 November 2026**
+**Revision:** 3.2 — 10 October 2026
+**v1.0 target:** tagged by **30 December 2026**
 **Primary goal:** learn the networking a strong backend/DevOps engineer should be able to reason about and troubleshoot, using a real FastAPI stack as the workload.
 **v1.1:** a separate, deeper networking track that starts only after v1.0 ships.
 
 How to read this plan:
 
 - Every command has an expected outcome. Where the outcome depends on the host (Docker version, firewall backend, userland proxy), the plan says **predict and record** instead of promising a result.
-- Every milestone maps to exactly one schedule block (section 23).
-- Every week has a **core** and a **stretch** part. Stretch is the first thing cut when time runs short.
+- Milestones are done in the order given in section 23. Blocks have no dates; only the version target does.
+- Every block has a **core** and a **stretch** part. Stretch is the first thing cut when time runs short.
 - The revision notes at the end list what changed since the previous version and why.
 
 ---
@@ -112,6 +112,7 @@ The lab must not accidentally expose deliberately weak services.
 During v1.0:
 
 - publish Nginx only on host loopback (`127.0.0.1`)
+- reach the stack from another machine only through an SSH tunnel to the host's loopback, never by publishing on a LAN address
 - never publish FastAPI, PostgreSQL or Redis
 - never expose `vuln/*` branches to the LAN or Internet
 - use only dummy data in anything you capture
@@ -159,12 +160,16 @@ Several expected results in this plan depend on versions. Record the actual vers
 
 Decide where the evidence is captured:
 
-- **Option 1:** the t740 is the lab host from Week 2 onward. All captures and host-specific findings come from it.
-- **Option 2:** the laptop is the lab host. Then run a clean-clone smoke test on the t740 in Week 2, and repeat the host-specific checks of section 15.6 there before writing the final docs.
+- **Option 1:** the t740 is the lab host from the setup block onward. All captures and host-specific findings come from it.
+- **Option 2:** the laptop is the lab host. Then run a clean-clone smoke test on the t740 in Block 2, and repeat the host-specific checks of section 15.6 there before writing the final docs.
+
+**Decision (10 October 2026): Option 1.** The host baseline (Milestone 0) is taken on the t740.
 
 Reason: source addresses, firewall backend and Docker version can differ between hosts. A document written on one host and verified on another can contradict itself.
 
-The t740 is likely headless. Capture there with `tcpdump -w`, copy the file to the laptop, and open it in Wireshark.
+The t740 is headless and managed over SSH and Tailscale. Capture there with `tcpdump -w`, copy the file to the laptop, and open it in Wireshark.
+
+How the t740 was built (Ubuntu Server 26.04 LTS, SSH keys, ufw, Tailscale, Docker Engine): [docs/lab-host-setup.md](../docs/lab-host-setup.md).
 
 ---
 
@@ -338,7 +343,7 @@ A clean clone must work with three commands:
 
 ```bash
 ./scripts/make-secrets.sh
-./scripts/make-lab-certs.sh      # from Week 4 on
+./scripts/make-lab-certs.sh      # from Block 4 on
 docker compose up -d --build
 ```
 
@@ -348,7 +353,7 @@ docker compose up -d --build
 
 # 8. Compose File
 
-This is the complete v1.0 skeleton. Create it in the setup block with all four networks defined from the start, so no later week has to migrate the network layout.
+This is the complete v1.0 skeleton. Create it in the setup block with all four networks defined from the start, so no later block has to migrate the network layout.
 
 ```yaml
 name: sfl
@@ -359,7 +364,7 @@ services:
     container_name: nginx
     ports:
       - "127.0.0.1:8080:80"
-      # - "127.0.0.1:8443:443"   # enable in Week 4 together with the TLS server block
+      # - "127.0.0.1:8443:443"   # enable in Block 4 together with the TLS server block
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/certs:/etc/nginx/certs:ro
@@ -488,7 +493,7 @@ Before the Redis service exists (setup block), leave out `redis`, its `depends_o
 - **The API healthcheck uses Python, not curl.** Slim Python images have no curl. It checks `127.0.0.1` inside the container, which matters in Drill 6.
 - `FORWARDED_ALLOW_IPS` **as an environment variable.** Uvicorn reads it directly, so the trusted network is visible in `compose.yml` and changeable per experiment without editing the command.
 - **No API port mapping, by design.** FastAPI is an internal service, and all application ingress must pass through Nginx. The architecture does not rely on how Docker handles published ports on internal-only networks.
-- **Port 443 commented out until Week 4.** Nginx refuses to start if a `listen 443 ssl` block points at certificate files that don't exist yet.
+- **Port 443 commented out until Block 4.** Nginx refuses to start if a `listen 443 ssl` block points at certificate files that don't exist yet.
 - `postgres:17` **with** `/var/lib/postgresql/data`**.** That is the correct mount path for this major version.
 
 
@@ -548,7 +553,7 @@ server {
 
 Port 80 stays in place after TLS is added. It is used for plaintext captures, and there is deliberately no redirect to HTTPS in v1.0.
 
-The TLS server block is added in Week 4 (section 17.4).
+The TLS server block is added in Block 4 (section 17.4).
 
 Reload after editing:
 
@@ -741,6 +746,8 @@ sudo nft list ruleset 2>/dev/null | head -n 50
 lsmod | grep br_netfilter || echo "br_netfilter not loaded"
 docker version
 cat /etc/docker/daemon.json 2>/dev/null || echo "no daemon.json"
+sudo ufw status verbose
+tailscale status
 docker network inspect $(docker network ls -q) \
   --format '{{.Name}}: {{range .IPAM.Config}}{{.Subnet}} {{end}}'
 ```
@@ -751,6 +758,8 @@ Two different "backends" are easy to confuse:
 - **Docker's firewall backend** is a separate setting (`"firewall-backend"` in `daemon.json`; absent means Docker's default, iptables).
 
 Save as `docs/host-network-baseline.md`.
+
+On the t740, ufw and Tailscale were set up before this baseline (see `docs/lab-host-setup.md`). Expect a `tailscale0` interface and ufw/Tailscale chains in the firewall output, and record them as pre-existing. Take the baseline after removing any test Compose projects (`docker compose down -v`), so their networks don't show up in the subnet check.
 
 Questions to answer:
 
@@ -768,7 +777,7 @@ Change nothing yet.
 
 
 
-# 14. Milestone 1 — Workload (setup block + Week 1)
+# 14. Milestone 1 — Workload (setup block + Block 1)
 
 
 
@@ -792,7 +801,7 @@ curl -s http://127.0.0.1:8080/db-check    # 200
 
 
 
-## Week 1
+## Block 1
 
 - Redis service, `/cache-check`
 - `/limited` with the pipeline limiter and fail-closed 503
@@ -819,7 +828,7 @@ All return 200.
 
 
 
-# 15. Milestone 2 — Docker Networking (Week 2)
+# 15. Milestone 2 — Docker Networking (Block 2)
 
 
 
@@ -1123,7 +1132,7 @@ Stretch: a LAN machine against a temporarily `0.0.0.0`-published port. Revert im
 
 
 
-# 16. Milestone 3 — Linux Primitives and Plaintext Captures (Week 3)
+# 16. Milestone 3 — Linux Primitives and Plaintext Captures (Block 3)
 
 Build each lab **by hand first**. Once it works, save the commands as the matching script in `scripts/`. All three labs live in namespaces you create, so Docker's host rules never touch them.
 
@@ -1311,7 +1320,7 @@ Redis TLS is a v1.1 exercise. Plaintext is intentional here.
 ## Deliverables
 
 - `docs/linux-network-primitives.md`: three diagrams, commands, ARP/FDB comparison, the routed ping explained hop by hop
-- `docs/packet-captures.md` part 1: ARP, ICMP, TCP handshake, HTTP, RESP, plus the DNS capture from Week 2
+- `docs/packet-captures.md` part 1: ARP, ICMP, TCP handshake, HTTP, RESP, plus the DNS capture from Block 2
 
 For each capture write: prediction, interface chosen and why, what was observed, explanation.
 
@@ -1319,7 +1328,7 @@ For each capture write: prediction, interface chosen and why, what was observed,
 
 
 
-# 17. Milestone 4 — Proxy Identity, TLS and Timeouts (Week 4)
+# 17. Milestone 4 — Proxy Identity, TLS and Timeouts (Block 4)
 
 
 
@@ -1540,7 +1549,7 @@ curl -s --tls-max 1.2 --cacert pki/lab-ca.crt \
   --resolve api.lab.test:8443:127.0.0.1 https://api.lab.test:8443/health
 ```
 
-Open both files in Wireshark and compare what each version hides. Compare both with the plaintext HTTP and RESP captures from Week 3.
+Open both files in Wireshark and compare what each version hides. Compare both with the plaintext HTTP and RESP captures from Block 3.
 
 ## 17.6 Timeouts
 
@@ -1582,9 +1591,9 @@ TLS failure          ...
 
 
 
-# 18. Milestone 5 — The Eight Failure Drills (Week 5)
+# 18. Milestone 5 — The Eight Failure Drills (Block 5)
 
-Eight distinct drills, no duplicates of Week 4's experiments.
+Eight distinct drills, no duplicates of Block 4's experiments.
 
 For every drill, record:
 
@@ -1726,7 +1735,7 @@ Use the same order every time. For anything inside a container, use netshoot (Me
 | Docker's FORWARD DROP and `br_netfilter`                             | bridge lab in the root namespace                       | bridge inside `ns-sw` (16.2)                                                    |
 | New namespaces may inherit `ip_forward`                              | router "before" test                                   | set it to 0 explicitly (16.3)                                                   |
 | Nginx caches upstream IPs from startup                               | 502s after the API is recreated                        | `resolver 127.0.0.11` + variable upstream (section 9)                           |
-| `listen 443 ssl` with missing certs                                  | Nginx won't start                                      | TLS block and port added in Week 4                                              |
+| `listen 443 ssl` with missing certs                                  | Nginx won't start                                      | TLS block and port added in Block 4                                              |
 | TLS 1.3 encrypts the certificate                                     | TLS capture                                            | compare with `--tls-max 1.2` (17.5)                                             |
 | `.local` is mDNS                                                     | lab hostname                                           | `api.lab.test` with `--resolve`                                                 |
 | Uvicorn below 0.31 ignores CIDR trust                                | Experiment A                                           | pin and verify the version (17.1)                                               |
@@ -1762,8 +1771,8 @@ CI is a supporting track, but it starts early so it never surprises the deadline
 | When                                   | What                                                                         |
 | -------------------------------------- | ---------------------------------------------------------------------------- |
 | Setup block                            | pytest and **Gitleaks** (from the first commit)                              |
-| Week 1 (stretch; at the latest Week 2) | **Hadolint**, **Semgrep**, **Trivy**, all **report-only**                    |
-| Week 6                                 | triage findings, fix or document accepted risks, switch main to **blocking** |
+| Block 1 (stretch; at the latest Block 2) | **Hadolint**, **Semgrep**, **Trivy**, all **report-only**                    |
+| Block 6                                 | triage findings, fix or document accepted risks, switch main to **blocking** |
 
 
 Practical notes:
@@ -1851,38 +1860,34 @@ Captures may contain request data. Commit sanitized excerpts or screenshots, nev
 
 
 
-# 23. Schedule to 30 November 2026
+# 23. Order of Work
 
-Calendar: Wednesday 7 October to Monday 30 November. Six build blocks after the setup block, plus a protected buffer.
-
-
-| Block  | Dates        | Milestone      | Core                                                                                                                                                                                                                                                   | Stretch (cut first)                                 | Exit check                                                                      |
-| ------ | ------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Setup  | 7–11 Oct     | M0 + M1 part 1 | lab-host decision; host baseline **before** the first `compose up`; repo and `.gitignore`; secrets script; `/health`, `/db-check`; settings loader; Compose with Nginx, API, PostgreSQL and all four networks; one pytest; CI with pytest and Gitleaks | Alembic baseline migration                          | `/health` and `/db-check` return 200 through `127.0.0.1:8080` from a fresh `up` |
-| Week 1 | 12–18 Oct    | M1 part 2      | Redis; `/cache-check`; `/limited` (pipeline, 503 fail-closed); `/debug/request`; `/slow`; JWT login, `/protected` and an authorization test; dependency timeouts; healthchecks; persistence check; Alembic if not done                                 | Hadolint, Semgrep, Trivy report-only                | Week 1 exit commands (section 14) all 200                                       |
-| Week 2 | 19–25 Oct    | M2             | sections 15.1–15.6; `matrix.sh` with every row explained; DNS capture; port publishing; clean-clone smoke test on the final host (if different from the lab host); report-only scanners if not done                                                    | LAN-client comparison (15.6)                        | `docker-networking.md` with matrix output committed                             |
-| Week 3 | 26 Oct–1 Nov | M3             | veth, bridge-in-`ns-sw` and router labs saved as scripts; ARP, ICMP, TCP, HTTP and RESP captures                                                                                                                                                       | Wireshark screenshots (text excerpts are enough)    | `linux-network-primitives.md` and `packet-captures.md` part 1 committed         |
-| Week 4 | 2–8 Nov      | M4             | 17.1–17.3 (A, B, C); certs script; TLS block; TLS 1.3 capture; timeout table                                                                                                                                                                           | subnet-membership bonus; TLS 1.2 comparison capture | `proxy-client-ip.md` and the Experiment C write-up committed                    |
-| Week 5 | 9–15 Nov     | M5             | eight drills                                                                                                                                                                                                                                           | optional router drill                               | `troubleshooting.md` with eight entries committed                               |
-| Week 6 | 16–22 Nov    | CI + docs      | scanner triage, main switches to blocking; `vuln/sql-injection` write-up; one-page threat model; four diagrams; README                                                                                                                                 | diagram polish                                      | CI green and blocking on main; all DoD docs exist                               |
-| Buffer | 23–30 Nov    | ship           | final clean clone on the final host; DoD review; fix broken instructions; remove dead experiments; tag                                                                                                                                                 | —                                                   | `v1.0` tag pushed                                                               |
+v1.0 has one date: **30 December 2026**. Blocks are done in order and have no dates of their own: Setup, Blocks 1–6, then a protected buffer before the tag.
 
 
+| Block | Milestone | Core | Stretch (cut first) | Exit check |
+| --- | --- | --- | --- | --- |
+| Setup | M0 + M1 part 1 | lab-host decision; host baseline **before** the first `compose up`; repo and `.gitignore`; secrets script; `/health`, `/db-check`; settings loader; Compose with Nginx, API, PostgreSQL and all four networks; one pytest; CI with pytest and Gitleaks | Alembic baseline migration | `/health` and `/db-check` return 200 through `127.0.0.1:8080` from a fresh `up` |
+| Block 1 | M1 part 2 | Redis; `/cache-check`; `/limited` (pipeline, 503 fail-closed); `/debug/request`; `/slow`; JWT login, `/protected` and an authorization test; dependency timeouts; healthchecks; persistence check; Alembic if not done | Hadolint, Semgrep, Trivy report-only | Block 1 exit commands (section 14) all 200 |
+| Block 2 | M2 | sections 15.1–15.6; `matrix.sh` with every row explained; DNS capture; port publishing; clean-clone smoke test on the final host (if different from the lab host); report-only scanners if not done | LAN-client comparison (15.6) | `docker-networking.md` with matrix output committed |
+| Block 3 | M3 | veth, bridge-in-`ns-sw` and router labs saved as scripts; ARP, ICMP, TCP, HTTP and RESP captures | Wireshark screenshots (text excerpts are enough) | `linux-network-primitives.md` and `packet-captures.md` part 1 committed |
+| Block 4 | M4 | 17.1–17.3 (A, B, C); certs script; TLS block; TLS 1.3 capture; timeout table | subnet-membership bonus; TLS 1.2 comparison capture | `proxy-client-ip.md` and the Experiment C write-up committed |
+| Block 5 | M5 | eight drills | optional router drill | `troubleshooting.md` with eight entries committed |
+| Block 6 | CI + docs | scanner triage, main switches to blocking; `vuln/sql-injection` write-up; one-page threat model; four diagrams; README | diagram polish | CI green and blocking on main; all DoD docs exist |
+| Buffer | ship | final clean clone on the final host; DoD review; fix broken instructions; remove dead experiments; tag | — | `v1.0` tag pushed |
 
 
-## Weekly gate
 
-Every Sunday:
 
-- commit everything
-- the block's deliverable doc exists, even if rough
-- tick the finished DoD boxes
+## Gates
 
-If a block's exit check is still open on Tuesday of the following week, apply the cut order immediately rather than borrowing from the buffer.
+- Don't start a block until the previous block's exit check passes, or its open items have been cut.
+- Every Sunday: commit everything, make sure the current block's deliverable doc exists (even if rough), and tick the finished DoD boxes.
+- Halfway to the tag date (mid-November), Block 3 should be done. If it isn't, apply the cut order immediately rather than borrowing from the buffer.
 
 ## Cut order
 
-Cut from the top until back on schedule:
+Cut from the top until back on track:
 
 1. the current block's stretch items
 2. the subnet-membership bonus experiment
@@ -1892,7 +1897,7 @@ Cut from the top until back on schedule:
 
 **Never cut:** the communication matrix, Experiments A–C, the eight drills, the clean clone, or the tag date.
 
-If a DoD item is still open on 27 November, move it to a "v1.0.1" list in the README and tag v1.0 on time anyway.
+If a DoD item is still open three days before the tag date, move it to a "v1.0.1" list in the README and tag v1.0 on time anyway.
 
 No VLANs, OPNsense or other v1.1 topics in the buffer.
 
@@ -1988,7 +1993,7 @@ No VLANs, OPNsense or other v1.1 topics in the buffer.
 - [ ] `host-network-baseline.md`, `docker-networking.md`, `linux-network-primitives.md`, `packet-captures.md`, `proxy-client-ip.md`, `troubleshooting.md`, `threat-model.md`
 - [ ] README explains what was learned, not only which tools were used
 - [ ] clean clone works on the final host with the three commands in section 7
-- [ ] `v1.0` tagged by 30 November 2026
+- [ ] `v1.0` tagged by 30 December 2026
 
 ---
 
@@ -2070,6 +2075,8 @@ Show the topology before the technology list. Then make concrete, proven stateme
 
 # 27. v1.1 — Network Track (after v1.0 ships)
 
+**Target date:** set when v1.0 is tagged.
+
 Order follows dependency, not novelty.
 
 1. **Routing in depth.** Static routes, longest-prefix match, metrics, multiple routers, return paths, asymmetric routing. When building asymmetric paths, check `rp_filter` before declaring the topology broken (0 = off, 1 = strict, 2 = loose). Predict, capture, and change it only as a documented experiment.
@@ -2112,7 +2119,7 @@ Order follows dependency, not novelty.
 
 # 29. Azure Mapping — Reference Only
 
-No Azure resources before 30 November. Note analogies as anchors for later study; they are never exact.
+No Azure resources before v1.0 ships. Note analogies as anchors for later study; they are never exact.
 
 
 | Local concept                 | Azure topic to study later        |
@@ -2150,7 +2157,7 @@ interface / namespace / bridge
 
 and then **prove** where the failure occurs.
 
-The objective is not to become a network engineer by 30 November. It is to become a backend/DevOps engineer who is unusually comfortable with networks, with a clean v1.1 path if that interest keeps pulling.
+The objective is not to become a network engineer by v1.0. It is to become a backend/DevOps engineer who is unusually comfortable with networks, with a clean v1.1 path if that interest keeps pulling.
 
 ---
 
@@ -2170,10 +2177,10 @@ What changed, and the failure each change prevents:
 8. **Experiment C defined precisely** (17.3). The previous Nginx config overwrote the forged header, so the spoof could never succeed.
 9. **Experiment B uses two clients** (17.2). One client can't show a shared bucket.
 10. **Nginx re-resolves upstreams** (section 9). Without it, a recreated API container causes persistent 502s.
-11. **TLS work in one block** (Week 4). The TLS capture was scheduled a week before TLS existed; port 443 is added only with its certificates.
+11. **TLS work in one block** (Block 4). The TLS capture was scheduled a week before TLS existed; port 443 is added only with its certificates.
 12. **TLS 1.3 vs 1.2 capture** (17.5). TLS 1.3 encrypts the certificate, so the old capture goal was impossible.
-13. **Port publishing (old section 15) assigned to Week 2.** It previously had no schedule slot.
-14. **JWT listed once** (Week 1). It was in two blocks before.
+13. **Port publishing (old section 15) assigned to Block 2.** It previously had no schedule slot.
+14. **JWT listed once** (Block 1). It was in two blocks before.
 15. **Nginx moved into the setup block.** The API sits only on internal networks, so it could not be reached from the host without it.
 16. **Drill 6 replaced** with "API listening on 127.0.0.1". The old Drill 6 duplicated Experiment B. The forwarded-header vulnerability write-up is Experiment C, written once.
 17. `172.30.0.0/16` **default-pool conflict check** (section 5).
@@ -2183,7 +2190,7 @@ What changed, and the failure each change prevents:
 21. **Rate limiter made atomic** with MULTI/EXEC (section 10).
 22. **Secrets permissions fixed** (dir 700, files 644), and the script never overwrites existing secrets (section 22).
 23. **Certificates generated by script and git-ignored.** This prevents Gitleaks failures and makes a clean clone work.
-24. **CI scanners start report-only in Week 1–2** and become blocking in Week 6, instead of all arriving in the last build week.
+24. **CI scanners start report-only in Block 1–2** and become blocking in Block 6, instead of all arriving in the last build week.
 25. `.local` **replaced by** `api.lab.test` with `curl --resolve`.
 26. **PostgreSQL pinned to 17** to avoid the PostgreSQL 18 data-path change.
 27. **Baseline taken before the first** `compose up`, including Docker's existing state if Docker is already installed.
@@ -2202,3 +2209,12 @@ What changed, and the failure each change prevents:
 6. `depends_on` **described as startup orchestration only** (section 8), not runtime dependency management.
 7. **"No API port mapping" stated as a design decision**, not as a consequence of Docker's handling of internal networks.
 
+
+## Revision 3.2
+
+1. **Dated schedule removed.** Each version has one target date: v1.0 is 30 December 2026 (was 30 November); v1.1 gets its date when v1.0 is tagged.
+2. **"Week N" renamed "Block N"** throughout. Blocks are an order of work, not calendar weeks.
+3. **Weekly Tuesday rule replaced** by block gates and one halfway check (section 23).
+4. **DoD cut-off is relative:** three days before the tag date.
+5. **Lab host provisioned** and documented in `docs/lab-host-setup.md`; baseline now records ufw and Tailscale (sections 4, 13).
+6. **SSH tunnel rule added** for reaching the loopback-only stack from another machine (section 3).

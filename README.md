@@ -3,7 +3,9 @@
 **Learn the networking behind a real backend by breaking it on purpose, then proving every fix.**
 
 A FastAPI + PostgreSQL + Redis service behind Nginx, containerized and hardened, with a CI security pipeline. Every connection in the stack is predicted, tested, captured and explained. Vulnerabilities and misconfigurations are introduced deliberately, exploited, detected and fixed, documenting what scanners catch and what they miss.
-The full plan can be found [HERE](Project_description/homelab_networking_plan.md) 
+   
+The full plan can be found [HERE](Project_description/homelab_networking_plan.md) and the hardware I use can be found [HERE](Project_description/hardware.md)
+   
 
 ![status](https://img.shields.io/badge/status-building%20in%20public-orange)
 ![v1.0 target](https://img.shields.io/badge/v1.0-30%20Dec%202026-blue)
@@ -117,7 +119,7 @@ Every write-up follows the same shape: **goal → setup → predictions → what
 
 | Requirement | Notes |
 |---|---|
-| A Linux host or VM | Bare metal or a VM. Docker Desktop on macOS or Windows hides the bridges inside its own VM, so the capture chapters won't match |
+| A Linux host or VM | Bare metal or a VM. Docker Desktop on macOS or Windows hides the bridges inside its own VM, so the capture chapters won't match. How I built mine: [docs/lab-host-setup.md](docs/lab-host-setup.md) |
 | Docker Engine 26.0+ | Older engines leak DNS out of internal networks ([CVE-2024-29018](https://nvd.nist.gov/vuln/detail/CVE-2024-29018)) |
 | Docker Compose v2 | `docker compose`, not `docker-compose` |
 | `sudo` | For `tcpdump`, `nsenter` and network namespaces |
@@ -126,7 +128,7 @@ Every write-up follows the same shape: **goal → setup → predictions → what
 ### Run it
 
 ```bash
-git clone <repo-url> secure-fastapi-lab && cd secure-fastapi-lab
+git clone https://github.com/mazarzycki/secure-fastapi-lab.git && cd secure-fastapi-lab
 
 ./scripts/make-secrets.sh          # generates local secrets (never committed)
 ./scripts/make-lab-certs.sh        # local CA + server cert (needed from chapter 04)
@@ -134,6 +136,14 @@ docker compose up -d --build
 
 curl -s http://127.0.0.1:8080/health
 ```
+
+On a headless lab host, run the stack there and reach it from your laptop through an SSH tunnel. The ports stay on the host's loopback:
+
+```bash
+ssh -L 8080:127.0.0.1:8080 -L 8443:127.0.0.1:8443 <user>@<lab-host>
+```
+
+With the tunnel open, the same `curl` works from the laptop.
 
 The debug toolbox used throughout is `nicolaka/netshoot:v0.16`, joined to a container's network namespace, so the application images stay minimal:
 
@@ -193,6 +203,7 @@ secure-fastapi-lab/
 │   ├── matrix.sh         segmentation matrix: by name, by IP, by layer
 │   └── netns-*.sh        hand-built veth, bridge and router labs
 ├── docs/                 one write-up per chapter
+│   └── lab-host-setup.md how the lab host (HP t740, Ubuntu Server 26.04) was built
 ├── captures/             sanitized capture notes (raw pcaps are not committed)
 ├── .github/workflows/    CI and the report-only workflow for vuln/* branches
 ├── compose.yml
