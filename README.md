@@ -3,9 +3,9 @@
 **Learn the networking behind a real backend by breaking it on purpose, then proving every fix.**
 
 A FastAPI + PostgreSQL + Redis service behind Nginx, containerized and hardened, with a CI security pipeline. Every connection in the stack is predicted, tested, captured and explained. Vulnerabilities and misconfigurations are introduced deliberately, exploited, detected and fixed, documenting what scanners catch and what they miss.
-   
-The full plan can be found [HERE](Project_description/homelab_networking_plan.md) and the hardware I use can be found [HERE](Project_description/hardware.md)
-   
+
+The full plan is in [docs/homelab_networking_plan.md](docs/homelab_networking_plan.md), and the hardware I use is described in [docs/lab-host-setup.md](docs/lab-host-setup.md#1-hardware).
+
 
 ![status](https://img.shields.io/badge/status-building%20in%20public-orange)
 ![v1.0 target](https://img.shields.io/badge/v1.0-30%20Dec%202026-blue)
@@ -202,7 +202,9 @@ secure-fastapi-lab/
 │   ├── make-lab-certs.sh
 │   ├── matrix.sh         segmentation matrix: by name, by IP, by layer
 │   └── netns-*.sh        hand-built veth, bridge and router labs
-├── docs/                 one write-up per chapter
+├── docs/                 plan, reading plan, and one write-up per chapter
+│   ├── homelab_networking_plan.md
+│   ├── networking_reading_plan.xlsx
 │   └── lab-host-setup.md how the lab host (HP t740, Ubuntu Server 26.04) was built
 ├── captures/             sanitized capture notes (raw pcaps are not committed)
 ├── .github/workflows/    CI and the report-only workflow for vuln/* branches
